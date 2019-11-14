@@ -7,6 +7,7 @@ public class Message {
     private String  content;
     private String  official;
     private String  customer;
+    private String  userId;
 
     public Integer getId() {
         return id;
@@ -46,5 +47,13 @@ public class Message {
 
     public void setCustomer(String customer) {
         this.customer = customer;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

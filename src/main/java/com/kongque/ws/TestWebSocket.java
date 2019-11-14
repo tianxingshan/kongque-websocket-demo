@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import javax.websocket.*;
 import javax.websocket.server.PathParam;
@@ -17,7 +18,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-@ServerEndpoint(value = "/ws/b", decoders = MessageDecoder.class, encoders = MessageEncoder.class)
+@ServerEndpoint(value = "/ws/{role}", decoders = MessageDecoder.class, encoders = MessageEncoder.class)
 @Component
 @Slf4j
 public class TestWebSocket {
@@ -50,26 +51,44 @@ public class TestWebSocket {
      */
     private java.lang.String receiveId = "";
 
+    /*
+    客服加1
+     */
     private static synchronized void addA() {
         official++;
     }
 
+    /*
+    用户加1
+     */
     private static synchronized void addB() {
         customer++;
     }
 
+    /*
+    客服减1
+     */
     private static synchronized void subA() {
         official--;
     }
 
+    /*
+    用户减1
+     */
     private static synchronized void subB() {
         customer--;
     }
 
+    /*
+    获取客服人数
+     */
     private static synchronized int getA() {
         return official;
     }
 
+    /*
+    获取用户
+     */
     private static synchronized int getB() {
         return customer;
     }
@@ -84,15 +103,13 @@ public class TestWebSocket {
         this.session = session;
         userId = UUID.randomUUID().toString();
         // 在线数加1,a代表客服
-        if ("a".equals(role)) {
-            // 客服的id为数字，这样就可以区分客服和用户了，这里假设不会重复
-            // 这里随机的用户id，所以不方便重连，正式环境大概要和用户表结合
+        if ("a".equals(role)) {//客服连接
             addA();
-            webSocketMapA.put(userId, this);
-        } else {
+            webSocketMapA.put("userA_Id", this);
+        } else {//客户廉价
             userId = UUID.randomUUID().toString();
             addB();
-            webSocketMapB.put(userId, this);
+            webSocketMapB.put("userB_Id", this);
         }
         // 这里可以加一个判断，如果webSocketMap.containsKey(id)，则系统重新指定一个id
         log.info("新连接: " + userId + "----当前客服人数：" + getA() + "----当前客户人数：" + getB());
@@ -114,6 +131,7 @@ public class TestWebSocket {
             subB();
             log.info("客户下线:" + userId + "----当前客服人数：" + getA() + "----当前客户人数：" + getB());
         }
+        log.info("websocket关闭连接");
     }
 
     /**
@@ -123,32 +141,17 @@ public class TestWebSocket {
      */
     @OnMessage
     public void onMessage(Message message, @PathParam(value = "role") String role) {
-        System.out.println(message);
-        if ("a".equals(role)) {
-            receiveId = message.getCustomer();
-            if (message.getCustomer() == null || !webSocketMapB.containsKey(receiveId)) {
-                webSocketMapA.get(userId).sendMessage("客户已下线");
-            } else {
-                webSocketMapB.get(receiveId).sendObj(message);
-            }
-        } else {
-            if (message.getOfficial() != null) {
-                if (webSocketMapA.containsKey(message.getOfficial())) {
-                    webSocketMapA.get(message.getOfficial()).sendObj(message);
-                } else {
-                    webSocketMapB.get(userId).sendMessage("当前客服已下线，请换个客服人员重新咨询");
-                }
-            } else {
-                if (webSocketMapA.size() == 0) {
-                    webSocketMapB.get(userId).sendMessage("当前无在线客服");
-                } else {
-                    // 系统随机指定客服，正式环境应当判断客服接应人数然后再进行指配
-                    int i = new Random().nextInt(webSocketMapA.size());
-                    message.setOfficial(webSocketMapA.keySet().toArray(new String[0])[i]);
-                    message.setCustomer(userId);
-                    webSocketMapA.get(message.getOfficial()).sendObj(message);
-                }
-            }
+        log.info("onmessage监听成功");
+        System.out.println(message.getContent());
+        if ("a".equals(role)) {//客服
+            TestWebSocket testWebSocket = webSocketMapB.get("userB_Id");
+            webSocketMapB.get("userB_Id").sendMessage(message.getContent());
+           log.info("客服向A客户发送消息 : " + message.getContent());
+
+        } else {//用户
+            TestWebSocket testWebSocket = webSocketMapA.get("userA_Id");
+            webSocketMapA.get("userA_Id").sendMessage(message.getContent());
+            log.info("客户向客服发送消息 : " + message.getContent());
         }
     }
 
@@ -165,6 +168,8 @@ public class TestWebSocket {
      */
     private void sendObj(Message message) {
         try {
+            log.info("服务器向客户端发送消息开始");
+            RemoteEndpoint.Basic basicRemote = this.session.getBasicRemote();
             this.session.getBasicRemote().sendObject(message);
         } catch (EncodeException | IOException e) {
             log.info("错误：由用户" + userId + "向" + receiveId + message.toString() + "具体错误为：" + e.toString());
